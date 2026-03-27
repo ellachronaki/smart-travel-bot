@@ -18,6 +18,10 @@ faq = {
     "how can i contact support": "Reach out via our contact form, WhatsApp, or call the support number."
 }
 
+FALLBACK_ANSWER = "I'm sorry, I couldn't find an answer to that. Please contact our support team."
+SIMILARITY_THRESHOLD = 0.4
+FUZZY_THRESHOLD = 70
+
 questions = list(faq.keys())
 answers = list(faq.values())
 
@@ -25,16 +29,28 @@ vectorizer = TfidfVectorizer().fit(questions)
 faq_vectors = vectorizer.transform(questions)
 translator = Translator()
 
-def smart_travel_bot(user_input):
+
+def safe_translate(text, src, dest):
+    if src == dest:
+        return text
+
     try:
-        lang = detect(user_input)
-    except:
+        return translator.translate(text, src=src, dest=dest).text
+    except Exception:
+        return text
+
+
+def smart_travel_bot(user_input):
+    cleaned_input = user_input.strip()
+    if not cleaned_input:
+        return FALLBACK_ANSWER
+
+    try:
+        lang = detect(cleaned_input)
+    except Exception:
         lang = 'en'
 
-    if lang != 'en':
-        translated_input = translator.translate(user_input, src=lang, dest='en').text
-    else:
-        translated_input = user_input
+    translated_input = safe_translate(cleaned_input, src=lang, dest='en') if lang != 'en' else cleaned_input
 
     user_vec = vectorizer.transform([translated_input])
     similarity = cosine_similarity(user_vec, faq_vectors)
@@ -43,15 +59,13 @@ def smart_travel_bot(user_input):
     score = similarity[0][best_match_idx]
     fuzzy_score = fuzz.ratio(translated_input.lower(), best_question.lower())
 
-    if score > 0.4 or fuzzy_score > 70:
+    if score > SIMILARITY_THRESHOLD or fuzzy_score > FUZZY_THRESHOLD:
         answer = faq[best_question]
     else:
-        answer = "I'm sorry, I couldn't find an answer to that. Please contact our support team."
+        answer = FALLBACK_ANSWER
 
-    if lang != 'en':
-        answer = translator.translate(answer, src='en', dest=lang).text
+    return safe_translate(answer, src='en', dest=lang) if lang != 'en' else answer
 
-    return answer
 
 def run_chat():
     print("🤖 SmartTravelBot is online! Ask anything about travel. Type 'exit' to stop.")
@@ -61,3 +75,7 @@ def run_chat():
             print("🤖 Safe travels! 👋")
             break
         print("🤖", smart_travel_bot(user))
+
+
+if __name__ == "__main__":
+    run_chat()
